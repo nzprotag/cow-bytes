@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import copy
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -170,19 +169,13 @@ def show_images(images, labels, class_names, num_images_to_show=16):
 
 
 import torch
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 
 def train_and_evaluate(model, train_loader, val_loader, criterion, optimizer, num_epochs, patience, device, ckpt_name=None):
     # Variables to track the best validation accuracy and the number of epochs without improvement
     best_val_acc = 0.0
     best_f1 = 0.0
     epochs_without_improvement = 0
-
-    # Lists to store training and validation metrics
-    train_losses = []
-    val_losses = []
-    val_accuracies = []
-    val_f1_scores = []
 
     for epoch in range(num_epochs):
         model.train()  # Set the model to training mode
@@ -196,19 +189,22 @@ def train_and_evaluate(model, train_loader, val_loader, criterion, optimizer, nu
 
             optimizer.zero_grad()  # Zero the gradients
             outputs = model(images)  # Forward pass
-            loss = criterion(outputs, labels.float())  # Compute loss
+
+            # Compute loss
+            loss = criterion(outputs, labels)  # Compute loss
             loss.backward()  # Backward pass
             optimizer.step()  # Update weights
 
             running_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+
+            # Apply sigmoid to outputs and threshold to get predictions
+            preds = torch.sigmoid(outputs) > 0.5  # Get binary predictions
+            correct += preds.eq(labels).sum().item()  # Count correct predictions
+            total += labels.size(0)  # Count total examples
 
         # Compute average training loss and accuracy
         train_loss = running_loss / len(train_loader)
         train_acc = correct / total
-        train_losses.append(train_loss)
 
         # Validation loop
         model.eval()  # Set the model to evaluation mode
@@ -217,50 +213,54 @@ def train_and_evaluate(model, train_loader, val_loader, criterion, optimizer, nu
         val_total = 0
         all_val_labels = []
         all_val_predictions = []
-        all_val_outputs_prob = []
+        all_val_probs = []  # To store predicted probabilities for ROC AUC
 
         with torch.no_grad():  # No need to calculate gradients during validation
             for val_images, val_labels in val_loader:
-                val_images, val_labels = val_images.to(device), val_labels.to(device).float()
+                val_images, val_labels = val_images.to(device), val_labels.to(device)
                 val_outputs = model(val_images)
                 val_loss = criterion(val_outputs, val_labels)
 
                 val_running_loss += val_loss.item()
-                val_predicted = torch.sigmoid(val_outputs) >= 0.5
-                val_total += val_labels.size(0)
-                val_correct += (val_predicted == val_labels).sum().item()
+                preds = torch.sigmoid(val_outputs) > 0.5  # Get binary predictions
+                val_correct += preds.eq(val_labels).sum().item()  # Count correct predictions
+                val_total += val_labels.size(0)  # Count total examples
 
-                # Store labels, predictions, and predicted probabilities
+                # Store labels and predictions for F1 score calculation
                 all_val_labels.extend(val_labels.cpu().numpy())
-                all_val_predictions.extend(val_predicted.cpu().numpy())
-                all_val_outputs_prob.extend(torch.sigmoid(val_outputs).cpu().numpy())
+                all_val_predictions.extend(preds.cpu().numpy())
+                all_val_probs.extend(torch.sigmoid(val_outputs).cpu().numpy())  # Store predicted probabilities
 
         # Compute average validation loss and accuracy
         val_loss = val_running_loss / len(val_loader)
         val_acc = val_correct / val_total
-        val_losses.append(val_loss)
-        val_accuracies.append(val_acc)
 
-        # Compute F1 score, precision, recall, and ROC-AUC
-        f1 = f1_score(all_val_labels, all_val_predictions)
+        # Compute F1 score
+        f1 = f1_score(all_val_labels, all_val_predictions, average='weighted')
+
+        # Compute Precision and Recall
         precision = precision_score(all_val_labels, all_val_predictions)
         recall = recall_score(all_val_labels, all_val_predictions)
-        roc_auc = roc_auc_score(all_val_labels, all_val_outputs_prob)
 
-        val_f1_scores.append(f1)
+        # Compute ROC AUC
+        roc_auc = roc_auc_score(all_val_labels, all_val_probs)
 
         print(f'Epoch [{epoch + 1}/{num_epochs}] - '
               f'Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, '
-              f'Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, '
-              f'Val F1: {f1:.4f}, Val Precision: {precision:.4f}, Val Recall: {recall:.4f}, Val ROC-AUC: {roc_auc:.4f}')
+              f'Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {f1:.4f}, '
+              f'Val Precision: {precision:.4f}, Val Recall: {recall:.4f}, Val ROC AUC: {roc_auc:.4f}')
 
         # Early stopping
         if val_acc > best_val_acc or f1 > best_f1:
             best_val_acc = val_acc
             best_f1 = f1
+            best_precision = precision
+            best_recall = recall
+            best_roc_auc = roc_auc
             epochs_without_improvement = 0  # Reset counter if the model improved
             print(f"Validation accuracy improved to {best_val_acc:.4f}. Saving model.")
             if ckpt_name:
+                # You can save the model here if you want
                 torch.save(model.state_dict(), f'{ckpt_name}.pth')
         else:
             epochs_without_improvement += 1
@@ -268,4 +268,4 @@ def train_and_evaluate(model, train_loader, val_loader, criterion, optimizer, nu
                 print("Early stopping triggered.")
                 break  # Stop training if no improvement for 'patience' epochs
 
-    return best_val_acc, best_f1, precision, recall, roc_auc, val_losses, val_f1_scores
+    return best_val_acc, best_f1, best_precision, best_recall, best_roc_auc # Return additional metrics
