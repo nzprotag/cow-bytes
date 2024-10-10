@@ -87,6 +87,7 @@ class TripletDataset(datasets.ImageFolder):
             image = self.transform(image)
         return image
     
+
 class SimpleTripletDataset(datasets.ImageFolder):
     def __init__(self, folder_path, transform=None):
         self.folder_path = folder_path
@@ -139,7 +140,149 @@ class SimpleTripletDataset(datasets.ImageFolder):
         if self.transform:
             image = self.transform(image)
         return image
+
+class TripletDatasetv2(datasets.ImageFolder):
+    """ This is the custom triplet dataset for the salient poses dataset. """
+    def __init__(self, folder_path, transform=None):
+        self.folder_path = folder_path
+        self.transform = transform
+        self.classes = os.listdir(folder_path)  # List of class folders
+        self.data = []  # To store triplet samples
+        self.class_to_idx = {class_name: idx for idx, class_name in enumerate(self.classes)}
+
+        for class_label in self.classes:
+            class_folder = os.path.join(folder_path, class_label)
+            if os.path.isdir(class_folder):
+                video_folders = os.listdir(class_folder)
+                for video_folder in video_folders:
+                    video_path = os.path.join(class_folder, video_folder)
+                    if os.path.isdir(video_path):
+                        frames = os.listdir(video_path)
+                        self.data.append((class_label, video_folder, frames))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        anchor_class, video_name, frames = self.data[index]
+        
+        # Randomly select an anchor frame
+        anchor_frame = random.choice(frames)
+        anchor_path = os.path.join(self.folder_path, anchor_class, video_name, anchor_frame)
+
+        # Positive sample: select a frame from the same video and class
+        positive_frame = random.choice(frames)  # Select another frame from the same video
+        positive_path = os.path.join(self.folder_path, anchor_class, video_name, positive_frame)
+
+        # Negative sample: select a frame from the same video but from a different class
+        other_class = random.choice([c for c in self.classes if c != anchor_class])
+        negative_path = self._get_negative_frame_path(other_class, video_name)
+
+        # Load images
+        anchor_image = self.load_image(anchor_path)
+        positive_image = self.load_image(positive_path)
+        negative_image = self.load_image(negative_path)
+
+        # Convert the class label to a tensor (you may use one-hot encoding or class index based on your needs)
+        label = self.class_to_idx[anchor_class]  # Assuming labels are based on class indices
+
+        return anchor_image, positive_image, negative_image, label
+
+    def _get_negative_frame_path(self, other_class, video_name):
+        """Get a frame from the same video name in the other class, or a random one if not found."""
+        other_class_folder = os.path.join(self.folder_path, other_class)
+        negative_video_path = os.path.join(other_class_folder, video_name)
+
+        if os.path.isdir(negative_video_path):  # Check if the folder exists
+            negative_frames = os.listdir(negative_video_path)
+        else:
+            # Select a random video if the same video name doesn't exist in the other class
+            negative_video_name, negative_frames = self._get_random_video_and_frames(other_class, video_name)
+            negative_video_path = os.path.join(other_class_folder, negative_video_name)
+            negative_frames = os.listdir(negative_video_path)
+
+        negative_frame = random.choice(negative_frames)
+        return os.path.join(negative_video_path, negative_frame)
+
+    def _get_random_video_and_frames(self, class_label, excluded_video_name):
+        """Select a random video from the specified class excluding the given video name."""
+        class_folder = os.path.join(self.folder_path, class_label)
+        video_folders = [v for v in os.listdir(class_folder) if v != excluded_video_name]
+        selected_video = random.choice(video_folders)
+        selected_video_path = os.path.join(class_folder, selected_video)
+        frames = os.listdir(selected_video_path)
+        return selected_video, frames
+
+    def load_image(self, path):
+        image = Image.open(path).convert("RGB")  # Ensure image is in RGB format
+        if self.transform:
+            image = self.transform(image)
+        return image
     
+class TripletDatasetv3(datasets.ImageFolder):
+    """ This is the custom triplet dataset for the salient poses dataset. """
+    def __init__(self, folder_path, transform=None):
+        self.folder_path = folder_path
+        self.transform = transform
+        self.classes = os.listdir(folder_path)  # List of class folders
+        self.data = []  # To store triplet samples
+        self.class_to_idx = {class_name: idx for idx, class_name in enumerate(self.classes)}
+
+        for class_label in self.classes:
+            class_folder = os.path.join(folder_path, class_label)
+            if os.path.isdir(class_folder):
+                video_folders = os.listdir(class_folder)
+                for video_folder in video_folders:
+                    video_path = os.path.join(class_folder, video_folder)
+                    if os.path.isdir(video_path):
+                        frames = os.listdir(video_path)
+                        self.data.append((class_label, video_folder, frames))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        anchor_class, video_name, frames = self.data[index]
+        
+        # Randomly select an anchor frame
+        anchor_frame = random.choice(frames)
+        anchor_path = os.path.join(self.folder_path, anchor_class, video_name, anchor_frame)
+
+        # Positive sample: select another frame from the same video
+        positive_frame = random.choice(frames)  # Ensure it's from the same video
+        positive_path = os.path.join(self.folder_path, anchor_class, video_name, positive_frame)
+
+        # Negative sample: select a frame from a different class and different video
+        other_class = random.choice([c for c in self.classes if c != anchor_class])
+        negative_video_name, negative_frames = self._get_random_video_and_frames(other_class)
+        negative_frame = random.choice(negative_frames)
+        negative_path = os.path.join(self.folder_path, other_class, negative_video_name, negative_frame)
+
+        # Load images
+        anchor_image = self.load_image(anchor_path)
+        positive_image = self.load_image(positive_path)
+        negative_image = self.load_image(negative_path)
+
+        # Convert the class label to a tensor (based on class indices)
+        label = self.class_to_idx[anchor_class]
+
+        return anchor_image, positive_image, negative_image, label
+
+    def _get_random_video_and_frames(self, class_label):
+        """Select a random video from the specified class."""
+        class_folder = os.path.join(self.folder_path, class_label)
+        video_folders = os.listdir(class_folder)
+        selected_video = random.choice(video_folders)
+        selected_video_path = os.path.join(class_folder, selected_video)
+        frames = os.listdir(selected_video_path)
+        return selected_video, frames
+
+    def load_image(self, path):
+        image = Image.open(path).convert("RGB")  # Ensure image is in RGB format
+        if self.transform:
+            image = self.transform(image)
+        return image
+
 
 # 4. Define the model
 class TripletModel(nn.Module):
