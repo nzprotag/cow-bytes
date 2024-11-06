@@ -110,7 +110,109 @@ class ActionImageDataset(Dataset):
 
         return batch
     
-    
+
+class ActionImageDatasetV2(Dataset):
+    def __init__(self, root_directory, action_file_path, transform=None):
+        """
+        Initializes the ActionImageDataset.
+
+        Args:
+            root_directory (str): The base directory where action folders are stored.
+            action_file_path (str): Path to the CSV file with action metadata.
+                This DataFrame should contain columns such as 'action' (name of the action) and 'label' (action label).
+            videos_df (str or pd.DataFrame): Path to the CSV file with video metadata or an existing DataFrame.
+                This DataFrame should contain columns such as 'action' (action name) and 'name' (video folder name).
+            transform (callable, optional): A torchvision transform or a composition of transforms to apply to the images.
+        
+        Attributes:
+            data (list of dict): A list containing metadata for each image, including paths and labels.
+            transform (callable): Transformations to be applied to the images.
+        
+        Example usage:
+            dataset = ActionImageDataset(root_directory='/path/to/root', actions_df='actions.csv', videos_df='videos.csv', transform=transform)
+            dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+        """
+         
+        # Load action and video information DataFrames
+        self.actions_df = pd.read_csv(action_file_path)
+        self.num_actions = len(self.actions_df)
+        self.transform = transform
+
+        # TODO: Use the annotation file for video information later.
+        # videos_df = pd.read_csv(annotation_file_path)
+
+        # Prepare a list to store image paths and related metadata
+        data = []
+
+        # Define the base directory where action folders are stored
+        base_dir = root_directory
+
+        # Iterate over each action folder in the actions DataFrame
+        for _, action_row in self.actions_df.iterrows():
+            action = action_row['action']
+            label = action_row['label']
+            
+            # Define the path to the action folder
+            action_path = os.path.join(base_dir, action)
+            
+            # Check for the existence of 'salient1' and 'salient2' folders within the action folder
+            for salient_folder in ['salient1', 'salient2']:
+                salient_path = os.path.join(action_path, salient_folder)
+                
+                if os.path.isdir(salient_path):  # Check if the salient folder exists
+                    # Iterate over each video folder within the salient folder
+                    for video_folder in os.listdir(salient_path):
+                        video_path = os.path.join(salient_path, video_folder)
+                        
+                        if os.path.isdir(video_path):  # Ensure it's a directory
+                            # Iterate over each image file in the video folder
+                            for image_file in os.listdir(video_path):
+                                image_path = os.path.join(video_path, image_file)
+                                
+                                if os.path.isfile(image_path):  # Ensure it's a file
+                                    # Append the image path and metadata to the data list
+                                    salient_value = 0 if salient_folder == 'salient1' else 1
+                                    data.append({
+                                        'action': action,
+                                        'label': label,
+                                        'salient': salient_value,
+                                        # 'class': salient_value + 2*label,
+                                        'video': video_folder,
+                                        'image_path': image_path
+                                    })
+
+        # Convert the data list to a DataFrame
+        self.images_df = pd.DataFrame(data)
+
+    def __len__(self):
+        return len(self.images_df)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        # Get the image path and label
+        img_path = self.images_df.iloc[idx]['image_path']
+        action = self.images_df.iloc[idx]['label']
+        salient = self.images_df.iloc[idx]['salient']
+        
+        # Load image
+        image = Image.open(img_path).convert("RGB")
+
+        # Initialize a multi-label target vector of zeros
+        target = torch.zeros(self.num_actions, dtype=torch.float)
+
+        # Set the target label for the current image
+        target[action] = salient
+
+        # Apply transformations if any
+        if self.transform:
+            image = self.transform(image)
+
+        batch = {'rgb': image, 'label': target}
+
+        return batch
+        
 class MultitaskDataset(Dataset):
     def __init__(self, root_dir, annotation_file,
                  transform=None,
