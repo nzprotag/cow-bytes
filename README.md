@@ -13,9 +13,11 @@ git clone --recurse https://github.com/prototaip-134/cow-bytes.git
   width=700
   height=auto
   ><br>
-    <p style="font-size:1.5vw;">Collage of BiteCount-A</p>
+    <p style="font-size:1.5vw;">Collage of BiteCount</p>
   </div>
 </div>
+
+The BiteCount dataset used can be found on [Kaggle](https://www.kaggle.com/datasets/sttaseen/bitecount). A demo of our model can be found under the [experiments](experiments/10_demo).
 
 
 ## Directory
@@ -23,9 +25,9 @@ git clone --recurse https://github.com/prototaip-134/cow-bytes.git
 ```
 scrambmix
 ├── data
-│   ├── BiteCount-A
+│   ├── BiteCount
 │   │   └── ...
-│   └── bitecount-a.zip
+│   └── bitecount.zip
 ├── dlc
 ├── experiments
 │   ├── 1_decision_tree
@@ -33,7 +35,7 @@ scrambmix
 │   └── ...
 ├── README.md
 ├── setup
-│   └── setup_a.sh
+│   └── setup.sh
 │   └── ...
 └── utils
     └── ...
@@ -99,9 +101,9 @@ ipython kernel install --user --name=cowbytes
 ## Setup
 ### Downloading and extracting the dataset
 In order to download the dataset, an existing [kaggle token](https://www.kaggle.com/docs/api#:~:text=From%20the%20site%20header%2C%20click,Create%20New%20API%20Token%E2%80%9D%20button.) needs to be set up.
-All the data-acquisition and extraction is handled by ```setup_<dataset>.sh```. From the ```setup``` directory of the repo, run one of the files in the following format:
+All the data-acquisition and extraction is handled by ```setup.sh```. From the ```setup``` directory of the repo, run one of the files in the following format:
 ```
-bash setup_a.sh
+bash setup.sh
 ```
 
 **Note:** If on any other operating system than Linux/Mac, open the bash file and run each command one by one.
